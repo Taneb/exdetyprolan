@@ -17,7 +17,7 @@ data NatPrim
   | NatRec
   deriving (Eq, Show)
 
-normWithNats :: Prism' b NatPrim -> NatPrim -> Cofree ((->) (Exp b)) (Exp b)
+normWithNats :: VariableNormalization NatPrim
 normWithNats e Nat = V (e # Nat) :< error "Too many arguments applied to Nat"
 normWithNats e NatZero = V (e # NatZero) :< error "Too many arguments applied to NatZero"
 normWithNats e NatSucc = V (e # NatSucc) :< \n -> V (e # NatSucc) :$ n :< error "Too many arguments applied to NatSucc"
@@ -32,7 +32,7 @@ normWithNats e NatRec
     V v :$ n' | Right NatSucc <- matching e v -> s :$ (V (e # NatRec) :$ l :$ p :$ z :$ s :$ n')
     _ -> V (e # NatRec) :$ l :$ p :$ z :$ s :$ n
 
-scopeWithNats :: NatPrim -> Either String (Exp NatPrim)
+scopeWithNats :: VarTyper NatPrim
 scopeWithNats Nat = Right (Set :$ ZeroL)
 scopeWithNats NatZero = Right (V Nat)
 scopeWithNats NatSucc = Right (Fun (V Nat) (Scope (V (F (V Nat)))))

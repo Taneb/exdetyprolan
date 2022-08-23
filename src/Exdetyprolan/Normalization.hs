@@ -9,12 +9,27 @@ import Control.Comonad
 import Control.Comonad.Cofree
 import Control.Monad
 import Data.Distributive
+import Data.Void
 
 import Exdetyprolan.Expression
 
 --------------------------------------------------------------------------------
 -- Normalization of expressions
 --------------------------------------------------------------------------------
+
+type Mealy a b = Cofree ((->) a) b
+
+-- Carries both the normalized form of an expression, and recipes for keeping
+-- it normalized as more variables are applied. This lets us normalize
+-- applications of functions (both primitive functions given to us as free
+-- variables and lambdas).
+type Normalization a = Mealy (Exp a) (Exp a)
+
+-- A recipe for normalizing a free variable, even in bound contexts.
+-- Given a way to extract the expected variable type from the actual variable
+-- type, and a way to put them back, in the form of a Prism, compute the
+-- normalization of the variable.
+type VariableNormalization a = forall b. Prism' b a -> a -> Normalization b
 
 -- | Compute a normal form of an expression.
 -- The normal form is returned in a 'Cofree' structure with subsequent
@@ -33,7 +48,7 @@ import Exdetyprolan.Expression
 -- @
 --
 -- Maybe this should use Cofree (Compose Maybe ((->) (Exp b)))?
-normalize :: (forall b. Prism' b a -> a -> Cofree ((->) (Exp b)) (Exp b)) -> Exp a -> Cofree ((->) (Exp a)) (Exp a)
+normalize :: VariableNormalization a -> Exp a -> Normalization a
 normalize norm (V a) = norm id a
 normalize norm (f :$ a) = unwrap (normalize norm f) $ extract (normalize norm a)
 normalize norm (Fun e (Scope r)) = Fun e' (Scope r') :< error "Too many arguments applied to Fun"
@@ -57,11 +72,14 @@ normalize _ OmegaL = OmegaL :< error "Too many arguments applied to OmegaL"
 
 -- | Extend a normalization of free variables by a single bound variable.
 -- Bound variables cannot be normalized further.
-extendNorm :: (forall b. Prism' b a -> a -> Cofree ((->) (Exp b)) (Exp b)) -> Prism' b (Var () (Exp a)) -> Var () (Exp a) -> Cofree ((->) (Exp b)) (Exp b)
+extendNorm :: VariableNormalization a -> VariableNormalization (Var () (Exp a))
 extendNorm _ p (B ()) = coiter (:$) (V (p # B ()))
--- This line is WRONG! It does weird things with lambdas, and the fact it's using Cofree's distributive instance is weird
+-- This case is WRONG! It does weird things with lambdas, and the fact it's using Cofree's distributive instance is weird
 extendNorm norm p (F a) = fmap join (collect (norm (p . _F . _V)) a)
 
--- Trivial normalization of no free variables
-emptyNorm :: a -> Cofree ((->) (Exp a)) (Exp a)
-emptyNorm _ = error "Unbound variable"
+voidNorm :: VariableNormalization Void
+voidNorm _ = absurd
+
+eitherNorm :: VariableNormalization a -> VariableNormalization b -> VariableNormalization (Either a b)
+eitherNorm l r p (Left a) = l (p . _Left) a
+eitherNorm l r p (Right b) = r (p . _Right) b

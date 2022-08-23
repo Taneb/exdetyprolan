@@ -15,8 +15,7 @@ import Text.Show.Deriving
 --------------------------------------------------------------------------------
 
 -- | The type of expressions. Parameterized by a type of free variables, in the
--- style of the bound library. I expect this to normally be something like
--- 'String'.
+-- style of the bound library.
 data Exp a
   -- | A variable.
   = V a
@@ -55,3 +54,7 @@ deriveShow1 ''Exp
 deriving instance Show a => Show (Exp a)
 
 makePrisms ''Exp
+
+-- an example expression: polymorphic identity function forall. (l : Level) (A : Set l) -> A -> A
+idFunction :: Exp a
+idFunction = Lam Level $ Scope $ Lam (Set :$ V (B ())) $ Scope $ Lam (V (B ())) $ Scope $ V (B ())

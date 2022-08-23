@@ -5,7 +5,7 @@ import Bound
 import Control.Comonad
 import Control.Comonad.Cofree
 import Control.Lens
-import Debug.Trace
+import Data.Void
 
 import Exdetyprolan.Expression
 import Exdetyprolan.Normalization
@@ -13,6 +13,10 @@ import Exdetyprolan.Normalization
 --------------------------------------------------------------------------------
 -- Typechecking of expressions
 --------------------------------------------------------------------------------
+
+-- a way to find the type of a variable
+-- TODO: should this just be a -> Exp a? If I'm not using strings for variables that might be better
+type VarTyper a = a -> Either String (Exp a)
 
 -- if input is well-typed, so is output
 -- type of successful output is always Set :$ something
@@ -25,7 +29,7 @@ import Exdetyprolan.Normalization
 -- of an expression's type will always be of the form 'Set :$ l' for some l.
 --
 -- The output of this function will not in general be normalized.
-findType :: (Show a, Eq a) => (forall b. Prism' b a -> a -> Cofree ((->) (Exp b)) (Exp b)) -> (a -> Either String (Exp a)) -> Exp a -> Either String (Exp a)
+findType :: (Show a, Eq a) => VariableNormalization a -> VarTyper a -> Exp a -> Either String (Exp a)
 findType _ resolve (V a) = resolve a
 findType norm resolve (f :$ a) = do
   ft <- findType norm resolve f
@@ -42,6 +46,8 @@ findType norm resolve (Fun e (Scope r)) = do
     Set :$ el -> do
       rt <- findType (extendNorm norm) resolve' r
       case rt of
+        -- the universe level of a function that takes a level and whose output
+        -- universe level depends on that level is Omega.
         Set :$ rl -> case traverse explore rl of
           Nothing  -> pure $ Set :$ OmegaL
           Just rl' -> pure $ Set :$ (UnionL :$ el :$ rl')
@@ -66,9 +72,8 @@ findType _ _ SuccL = pure (Fun Level (Scope Level))
 findType _ _ UnionL = pure (Fun Level (Scope (Fun Level (Scope Level))))
 findType _ _ OmegaL = pure Level
 
-emptyScope :: a -> Either String (Exp a)
-emptyScope _ = Left "Unbound variable"
+voidTyper :: VarTyper Void
+voidTyper = absurd
 
--- an example expression: polymorphic identity function forall. (l : Level) (A : Set l) -> A -> A
-idFunction :: Exp a
-idFunction = Lam Level $ Scope $ Lam (Set :$ V (B ())) $ Scope $ Lam (V (B ())) $ Scope $ V (B ())
+eitherTyper :: VarTyper a -> VarTyper b -> VarTyper (Either a b)
+eitherTyper l r = either (fmap (fmap Left) . l) (fmap (fmap Right) . r)
